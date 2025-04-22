@@ -263,7 +263,12 @@ class NPC:
 
         # Случайное событие во время отдыха
         if random.random() < 0.2:
-            events.append(f"{self.name} размышляет о жизни...")
+            event = random.choice([
+                f"{self.name} размышляет о жизни...",
+                f"{self.name} чистит свое снаряжение",
+                f"{self.name} перекусывает"
+            ])
+            events.append(event)
 
         # Возвращение к исследованию
         if self.health > self.max_health * 0.7 or random.random() < 0.5:
@@ -416,6 +421,10 @@ class GameWorld:
         self.npcs.append(npc)
         self.log_event(npc.join_party())
 
+    def add_multiple_npcs(self, npc_list):
+        for npc in npc_list:
+            self.add_npc(npc)
+
     def log_event(self, event):
         self.event_log.append(event)
         # Ограничиваем размер лога
@@ -445,7 +454,8 @@ class GameWorld:
                 "Над миром проносится странный ветер...",
                 "Где-то вдалеке слышен странный шум",
                 "Небо на мгновение становится красным",
-                "Земля слегка дрожит под ногами"
+                "Земля слегка дрожит под ногами",
+                "В воздухе ощущается магическая энергия"
             ])
             self.log_event(event)
 
@@ -477,6 +487,9 @@ class GameGUI:
 
         self.add_btn = ttk.Button(control_frame, text="Добавить персонажа", command=self.add_character)
         self.add_btn.pack(side=tk.LEFT, padx=2)
+
+        self.add_multiple_btn = ttk.Button(control_frame, text="Создать группу", command=self.add_multiple_characters)
+        self.add_multiple_btn.pack(side=tk.LEFT, padx=2)
 
         self.start_btn = ttk.Button(control_frame, text="Старт", command=self.start_simulation)
         self.start_btn.pack(side=tk.LEFT, padx=2)
@@ -542,6 +555,68 @@ class GameGUI:
 
         ttk.Button(dialog, text="Создать", command=create).grid(row=2, column=0, columnspan=2, pady=5)
 
+    def add_multiple_characters(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Создание группы персонажей")
+
+        # Количество персонажей
+        ttk.Label(dialog, text="Количество персонажей:").grid(row=0, column=0, padx=5, pady=5)
+        count_var = tk.IntVar(value=3)
+        ttk.Spinbox(dialog, from_=1, to=10, textvariable=count_var).grid(row=0, column=1, padx=5, pady=5)
+
+        # Распределение классов
+        ttk.Label(dialog, text="Распределение классов:").grid(row=1, column=0, padx=5, pady=5)
+        class_frame = ttk.Frame(dialog)
+        class_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5)
+
+        ttk.Label(class_frame, text="Маги:").grid(row=0, column=0)
+        mage_var = tk.IntVar(value=1)
+        ttk.Spinbox(class_frame, from_=0, to=10, textvariable=mage_var, width=3).grid(row=0, column=1)
+
+        ttk.Label(class_frame, text="Воины:").grid(row=0, column=2)
+        warrior_var = tk.IntVar(value=1)
+        ttk.Spinbox(class_frame, from_=0, to=10, textvariable=warrior_var, width=3).grid(row=0, column=3)
+
+        ttk.Label(class_frame, text="Разбойники:").grid(row=0, column=4)
+        rogue_var = tk.IntVar(value=1)
+        ttk.Spinbox(class_frame, from_=0, to=10, textvariable=rogue_var, width=3).grid(row=0, column=5)
+
+        # Префикс имен
+        ttk.Label(dialog, text="Префикс имен:").grid(row=3, column=0, padx=5, pady=5)
+        prefix_var = tk.StringVar(value="Персонаж")
+        ttk.Entry(dialog, textvariable=prefix_var).grid(row=3, column=1, padx=5, pady=5)
+
+        def create():
+            count = count_var.get()
+            mages = mage_var.get()
+            warriors = warrior_var.get()
+            rogues = rogue_var.get()
+
+            if mages + warriors + rogues != count:
+                messagebox.showerror("Ошибка", "Сумма персонажей по классам должна равняться общему количеству")
+                return
+
+            prefix = prefix_var.get()
+            if not prefix:
+                prefix = "Персонаж"
+
+            npc_list = []
+            for i in range(1, count + 1):
+                name = f"{prefix} {i}"
+
+                if i <= mages:
+                    npc_list.append(Mage(name))
+                elif i <= mages + warriors:
+                    npc_list.append(Warrior(name))
+                else:
+                    npc_list.append(Rogue(name))
+
+            self.game_world.add_multiple_npcs(npc_list)
+            self.update_ui()
+            dialog.destroy()
+
+        ttk.Button(dialog, text="Создать группу", command=create).grid(row=4, column=0, columnspan=2, pady=5)
+
     def start_simulation(self):
         if not self.game_world.npcs:
             messagebox.showwarning("Предупреждение", "Добавьте хотя бы одного персонажа")
@@ -593,6 +668,7 @@ class GameGUI:
         self.start_btn.state(["disabled" if self.game_world.is_running else "!disabled"])
         self.stop_btn.state(["disabled" if not self.game_world.is_running else "!disabled"])
         self.add_btn.state(["disabled" if self.game_world.is_running else "!disabled"])
+        self.add_multiple_btn.state(["disabled" if self.game_world.is_running else "!disabled"])
 
 
 if __name__ == "__main__":
