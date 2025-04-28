@@ -934,9 +934,288 @@ class GameWorld:
 class GameGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("RPG World Simulator")
+        self.setup_main_window()
         self.game_world = GameWorld()
         self.simulation_thread = None
+        self.setup_styles()
+        self.create_widgets()
+        self.center_window()
+        self.setup_event_handlers()
+
+    def setup_main_window(self):
+        """Настройка главного окна"""
+        self.root.title("RPG World Simulator")
+        self.root.geometry("1100x800")
+        self.root.configure(bg='#2e3440')
+        self.root.minsize(900, 650)
+        self.root.option_add('*tearOff', False)  # Для меню
+
+    def setup_styles(self):
+        """Настройка кастомных стилей"""
+        style = ttk.Style()
+
+        # Темная тема в стиле RPG
+        style.theme_create('rpg_dark', settings={
+            ".": {
+                "configure": {
+                    "background": "#3b4252",
+                    "foreground": "#e5e9f0"
+                }
+            },
+            "TFrame": {
+                "configure": {"background": "#3b4252"}
+            },
+            "TLabel": {
+                "configure": {
+                    "font": ('Segoe UI', 10),
+                    "background": "#3b4252",
+                    "foreground": "#e5e9f0"
+                }
+            },
+            "TButton": {
+                "configure": {
+                    "font": ('Segoe UI', 10, 'bold'),
+                    "background": "#5e81ac",
+                    "foreground": "#eceff4",
+                    "borderwidth": 0,
+                    "padding": 8,
+                    "width": 15
+                },
+                "map": {
+                    "background": [("active", "#81a1c1"), ("disabled", "#4c566a")],
+                    "foreground": [("disabled", "#d8dee9")]
+                }
+            },
+            "TLabelFrame": {
+                "configure": {
+                    "font": ('Segoe UI', 11, 'bold'),
+                    "relief": "groove",
+                    "borderwidth": 2
+                }
+            },
+            "TScale": {
+                "configure": {
+                    "background": "#3b4252",
+                    "troughcolor": "#434c5e"
+                }
+            },
+            "TScrollbar": {
+                "configure": {
+                    "arrowcolor": "#5e81ac",
+                    "troughcolor": "#434c5e"
+                }
+            }
+        })
+        style.theme_use('rpg_dark')
+
+    def create_widgets(self):
+        """Создание всех элементов интерфейса"""
+        self.setup_main_frames()
+        self.setup_control_panel()
+        self.setup_log_panel()
+        self.setup_stats_panel()
+        self.setup_menu()
+
+    def setup_main_frames(self):
+        """Основные фреймы приложения"""
+        self.main_frame = ttk.Frame(self.root, padding=(15, 15))
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.control_frame = ttk.LabelFrame(
+            self.main_frame,
+            text=" Управление симуляцией ",
+            padding=(10, 10)
+        )
+        self.control_frame.pack(fill=tk.X, pady=(0, 15))
+
+        self.content_frame = ttk.Frame(self.main_frame)
+        self.content_frame.pack(fill=tk.BOTH, expand=True)
+
+    def setup_control_panel(self):
+        """Панель управления с кнопками"""
+        btn_frame = ttk.Frame(self.control_frame)
+        btn_frame.pack(fill=tk.X)
+
+        buttons = [
+            ("Добавить персонажа", self.add_character),
+            ("Создать группу", self.add_multiple_characters),
+            ("Старт симуляции", self.start_simulation),
+            ("Остановить", self.stop_simulation)
+        ]
+
+        for text, command in buttons:
+            btn = ttk.Button(btn_frame, text=text, command=command)
+            btn.pack(side=tk.LEFT, padx=5)
+            setattr(self, f"{text.split()[0].lower()}_btn", btn)
+
+        self.stop_btn.config(state=tk.DISABLED)
+
+        # Панель скорости
+        speed_frame = ttk.Frame(self.control_frame)
+        speed_frame.pack(fill=tk.X, pady=(10, 0))
+
+        ttk.Label(speed_frame, text="Скорость:").pack(side=tk.LEFT)
+
+        self.speed_var = tk.DoubleVar(value=1.0)
+        self.speed_scale = ttk.Scale(
+            speed_frame,
+            from_=0.1,
+            to=5.0,
+            variable=self.speed_var,
+            command=self.update_speed
+        )
+        self.speed_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+
+        self.speed_label = ttk.Label(speed_frame, text="1.0x", width=5)
+        self.speed_label.pack(side=tk.LEFT)
+
+    def setup_log_panel(self):
+        """Панель журнала событий"""
+        log_frame = ttk.LabelFrame(
+            self.content_frame,
+            text=" Журнал событий ",
+            padding=(10, 10)
+        )
+        log_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+
+        self.log_text = scrolledtext.ScrolledText(
+            log_frame,
+            wrap=tk.WORD,
+            width=60,
+            height=25,
+            font=('Consolas', 10),
+            bg='#2e3440',
+            fg='#d8dee9',
+            insertbackground='white',
+            selectbackground='#5e81ac',
+            padx=10,
+            pady=10,
+            relief='flat'
+        )
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    def setup_stats_panel(self):
+        """Панель статистики"""
+        stats_frame = ttk.LabelFrame(
+            self.content_frame,
+            text=" Статистика ",
+            padding=(10, 10)
+        )
+        stats_frame.pack(side=tk.LEFT, fill=tk.BOTH)
+
+        self.stats_text = tk.Text(
+            stats_frame,
+            wrap=tk.WORD,
+            width=35,
+            height=25,
+            font=('Consolas', 10),
+            bg='#2e3440',
+            fg='#d8dee9',
+            insertbackground='white',
+            selectbackground='#5e81ac',
+            padx=10,
+            pady=10,
+            relief='flat'
+        )
+        self.stats_text.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = ttk.Scrollbar(
+            stats_frame,
+            command=self.stats_text.yview
+        )
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.stats_text.config(yscrollcommand=scrollbar.set)
+
+    def setup_menu(self):
+        """Главное меню приложения"""
+        menubar = tk.Menu(self.root)
+
+        # Меню Файл
+        file_menu = tk.Menu(menubar)
+        file_menu.add_command(label="Новая симуляция")
+        file_menu.add_command(label="Сохранить лог...")
+        file_menu.add_separator()
+        file_menu.add_command(label="Выход", command=self.root.quit)
+        menubar.add_cascade(label="Файл", menu=file_menu)
+
+        # Меню Помощь
+        help_menu = tk.Menu(menubar)
+        help_menu.add_command(label="О программе")
+        menubar.add_cascade(label="Помощь", menu=help_menu)
+
+        self.root.config(menu=menubar)
+
+    def setup_event_handlers(self):
+        """Настройка обработчиков событий"""
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        # Горячие клавиши
+        self.root.bind('<Control-q>', lambda e: self.root.quit())
+        self.root.bind('<F1>', lambda e: self.show_help())
+
+    def center_window(self):
+        """Центрирование окна на экране"""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+
+    def update_speed(self, event=None):
+        """Обновление скорости симуляции"""
+        speed = round(self.speed_var.get(), 1)
+        self.game_world.simulation_speed = speed
+        self.speed_label.config(text=f"{speed}x")
+
+    def on_close(self):
+        """Обработчик закрытия окна"""
+        self.stop_simulation()
+        if messagebox.askokcancel(
+                "Выход",
+                "Вы уверены, что хотите выйти?",
+                parent=self.root
+        ):
+            self.root.destroy()
+
+    def show_help(self):
+        """Показать окно помощи"""
+        help_window = tk.Toplevel(self.root)
+        help_window.title("Справка")
+        help_window.geometry("500x400")
+
+        text = tk.Text(
+            help_window,
+            wrap=tk.WORD,
+            padx=10,
+            pady=10,
+            bg='#3b4252',
+            fg='#e5e9f0',
+            font=('Segoe UI', 10)
+        )
+        text.pack(fill=tk.BOTH, expand=True)
+
+        help_text = """RPG World Simulator - помощь
+
+1. Добавьте персонажей с помощью кнопки "Добавить персонажа"
+2. Настройте скорость симуляции
+3. Запустите симуляцию кнопкой "Старт"
+4. Наблюдайте за событиями в журнале
+
+Горячие клавиши:
+Ctrl+Q - выход
+F1 - эта справка"""
+
+        text.insert(tk.END, help_text)
+        text.config(state=tk.DISABLED)
+
+        ttk.Button(
+            help_window,
+            text="Закрыть",
+            command=help_window.destroy
+        ).pack(pady=10)
+
+
 
         self.classes = {
             "Маг": ["Архимаг", "Некромант"],
