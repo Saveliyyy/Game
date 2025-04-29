@@ -1,12 +1,13 @@
 import tkinter as tk
-from logging import root
 from tkinter import ttk, scrolledtext, messagebox
 from PIL import Image, ImageTk
 import random
 from enum import Enum
 import threading
 import time
-
+import os
+from tkinter import PhotoImage
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 
 # ========== БАЗОВЫЕ КЛАССЫ ==========
 class StatusEffect(Enum):
@@ -934,50 +935,154 @@ class GameWorld:
 class GameGUI:
     def __init__(self, root):
         self.root = root
-        self.setup_main_window()
         self.game_world = GameWorld()
         self.simulation_thread = None
+        self.class_images = {}  # Для хранения изображений классов
+        self.prev_log_length = 0  # Добавляем инициализацию
+        self.image_dir = os.path.join(os.path.dirname(__file__), "images")
+        self.load_images()
+
+        # Инициализируем кнопки как None
+        self.stop_btn = None
+        self.start_btn = None
+        self.add_btn = None
+        self.add_multiple_btn = None
+
+        self.load_images()
+
+        # Цвета для разных типов сообщений
+        self.log_colors = {
+            "system": "#81a1c1",  # Системные сообщения
+            "combat": "#bf616a",  # Боевые сообщения
+            "heal": "#a3be8c",  # Исцеление
+            "loot": "#ebcb8b",  # Находки, золото
+            "level": "#b48ead",  # Уровни, опыт
+            "spell": "#88c0d0",  # Заклинания
+            "status": "#d08770",  # Статусные эффекты
+            "death": "#bf616a",  # Смерть
+            "monster": "#d08770",  # Монстры
+            "default": "#d8dee9"  # Стандартный цвет
+        }
+
+        self.classes = {
+            "Маг": ["Архимаг", "Некромант"],
+            "Воин": ["Берсерк", "Паладин"],
+            "Разбойник": ["Ассасин", "Теневой плясун"],
+            "Жрец": ["Инквизитор", "Друид"],
+            "Лучник": ["Снайпер", "Рейнджер"],
+            "Алхимик": ["Бомбардир", "Трансмутатор"]
+        }
+
+        self.setup_main_window()
         self.setup_styles()
         self.create_widgets()
         self.center_window()
         self.setup_event_handlers()
+        self.update_ui()
+
+    def load_images(self):
+        """Загрузка изображений для классов с улучшенной обработкой ошибок"""
+        self.class_images = {}
+        icon_mapping = {
+            "Маг": "mage.png",
+            "Воин": "warrior.png",
+            "Разбойник": "rogue.png",
+            "Жрец": "priest.png",
+            "Лучник": "archer.png",
+            "Алхимик": "alchemist.png"
+        }
+
+        # Создаем папку images, если ее нет
+        if not os.path.exists(self.image_dir):
+            os.makedirs(self.image_dir)
+            print(f"Создана папка для изображений: {self.image_dir}")
+
+        # Иконка приложения (пробуем несколько форматов)
+        icon_formats = ['app_icon.ico', 'app_icon.png']
+        for icon_file in icon_formats:
+            try:
+                icon_path = os.path.join(self.image_dir, icon_file)
+                self.root.iconbitmap(icon_path)
+                break
+            except:
+                continue
+
+        # Загрузка иконок классов
+        for class_name, filename in icon_mapping.items():
+            try:
+                img_path = os.path.join(self.image_dir, filename)
+                if os.path.exists(img_path):
+                    img = Image.open(img_path).resize((64, 64))
+                    self.class_images[class_name] = ImageTk.PhotoImage(img)
+                else:
+                    raise FileNotFoundError(f"Файл {filename} не найден")
+            except Exception as e:
+                print(f"Ошибка загрузки изображения {filename}: {e}")
+                # Создаем текстовую заглушку
+                img = Image.new('RGB', (64, 64), color='#3b4252')
+                draw = ImageDraw.Draw(img)
+
+                # Настройки текста
+                try:
+                    font = ImageFont.truetype("arial.ttf", 12)
+                except:
+                    font = ImageFont.load_default()
+
+                # Рисуем текст по центру
+                text = class_name[:3]
+                text_width, text_height = draw.textsize(text, font=font)
+                position = ((64 - text_width) // 2, (64 - text_height) // 2)
+
+                draw.text(position, text, fill="#ffffff", font=font)
+                self.class_images[class_name] = ImageTk.PhotoImage(img)
 
     def setup_main_window(self):
         """Настройка главного окна"""
         self.root.title("RPG World Simulator")
-        self.root.geometry("1100x800")
+        self.root.geometry("1200x800")
         self.root.configure(bg='#2e3440')
-        self.root.minsize(900, 650)
-        self.root.option_add('*tearOff', False)  # Для меню
+        self.root.minsize(1000, 700)
+
+        # Иконка приложения
+        try:
+            self.root.iconbitmap('images/icon.ico')
+        except:
+            pass
 
     def setup_styles(self):
-        """Настройка кастомных стилей"""
+        """Настройка кастомных стилей в RPG-стиле"""
         style = ttk.Style()
 
-        # Темная тема в стиле RPG
-        style.theme_create('rpg_dark', settings={
+        # Создаем свою тему
+        style.theme_create('rpg_theme', settings={
             ".": {
                 "configure": {
                     "background": "#3b4252",
-                    "foreground": "#e5e9f0"
+                    "foreground": "#e5e9f0",
+                    "font": ("Georgia", 10)
                 }
             },
             "TFrame": {
-                "configure": {"background": "#3b4252"}
+                "configure": {
+                    "background": "#3b4252",
+                    "relief": "ridge",
+                    "borderwidth": 2
+                }
             },
             "TLabel": {
                 "configure": {
-                    "font": ('Segoe UI', 10),
                     "background": "#3b4252",
-                    "foreground": "#e5e9f0"
+                    "foreground": "#e5e9f0",
+                    "font": ("Georgia", 10)
                 }
             },
             "TButton": {
                 "configure": {
-                    "font": ('Segoe UI', 10, 'bold'),
                     "background": "#5e81ac",
                     "foreground": "#eceff4",
-                    "borderwidth": 0,
+                    "font": ("Georgia", 10, "bold"),
+                    "borderwidth": 2,
+                    "relief": "raised",
                     "padding": 8,
                     "width": 15
                 },
@@ -988,73 +1093,119 @@ class GameGUI:
             },
             "TLabelFrame": {
                 "configure": {
-                    "font": ('Segoe UI', 11, 'bold'),
+                    "font": ("Papyrus", 12, "bold"),
                     "relief": "groove",
-                    "borderwidth": 2
+                    "borderwidth": 3,
+                    "background": "#3b4252",
+                    "foreground": "#d8dee9"
                 }
             },
             "TScale": {
                 "configure": {
                     "background": "#3b4252",
-                    "troughcolor": "#434c5e"
+                    "troughcolor": "#434c5e",
+                    "gripcount": 0,
+                    "sliderthickness": 15
                 }
             },
             "TScrollbar": {
                 "configure": {
                     "arrowcolor": "#5e81ac",
-                    "troughcolor": "#434c5e"
+                    "troughcolor": "#434c5e",
+                    "background": "#5e81ac"
+                }
+            },
+            "TCombobox": {
+                "configure": {
+                    "fieldbackground": "#434c5e",
+                    "background": "#4c566a",
+                    "foreground": "#e5e9f0"
                 }
             }
         })
-        style.theme_use('rpg_dark')
+        style.theme_use('rpg_theme')
 
     def create_widgets(self):
         """Создание всех элементов интерфейса"""
-        self.setup_main_frames()
-        self.setup_control_panel()
-        self.setup_log_panel()
-        self.setup_stats_panel()
-        self.setup_menu()
+        # Главный контейнер
+        self.main_frame = ttk.Frame(self.root)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-    def setup_main_frames(self):
-        """Основные фреймы приложения"""
-        self.main_frame = ttk.Frame(self.root, padding=(15, 15))
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        # Панель управления
+        self.create_control_panel()
 
-        self.control_frame = ttk.LabelFrame(
+        # Основная область контента
+        self.content_frame = ttk.Frame(self.main_frame)
+        self.content_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+
+        # Лог событий
+        self.create_log_panel()
+
+        # Статистика и информация
+        self.create_stats_panel()
+
+        # Меню
+        self.create_menu()
+
+    def create_control_panel(self):
+        """Панель управления с кнопками"""
+        control_frame = ttk.LabelFrame(
             self.main_frame,
             text=" Управление симуляцией ",
             padding=(10, 10)
         )
-        self.control_frame.pack(fill=tk.X, pady=(0, 15))
+        control_frame.pack(fill=tk.X, pady=(0, 10))
 
-        self.content_frame = ttk.Frame(self.main_frame)
-        self.content_frame.pack(fill=tk.BOTH, expand=True)
-
-    def setup_control_panel(self):
-        """Панель управления с кнопками"""
-        btn_frame = ttk.Frame(self.control_frame)
+        # Фрейм для кнопок
+        btn_frame = ttk.Frame(control_frame)
         btn_frame.pack(fill=tk.X)
 
+        # Стилизованные кнопки
         buttons = [
-            ("Добавить персонажа", self.add_character),
-            ("Создать группу", self.add_multiple_characters),
-            ("Старт симуляции", self.start_simulation),
-            ("Остановить", self.stop_simulation)
+            ("Добавить героя", self.add_character, "#5e81ac"),
+            ("Создать отряд", self.add_multiple_characters, "#a3be8c"),
+            ("Начать приключение", self.start_simulation, "#bf616a"),
+            ("Завершить", self.stop_simulation, "#d08770")
         ]
 
-        for text, command in buttons:
-            btn = ttk.Button(btn_frame, text=text, command=command)
-            btn.pack(side=tk.LEFT, padx=5)
-            setattr(self, f"{text.split()[0].lower()}_btn", btn)
+        # Создаем кнопки и сохраняем ссылки на них
+        self.buttons = {}
+        for text, command, color in buttons:
+            btn = tk.Button(
+                btn_frame,
+                text=text,
+                command=command,
+                bg=color,
+                fg="#2e3440",
+                activebackground="#81a1c1",
+                activeforeground="#2e3440",
+                font=("Georgia", 10, "bold"),
+                relief="raised",
+                bd=3,
+                padx=10,
+                pady=5
+            )
+            btn.pack(side=tk.LEFT, padx=5, expand=True)
+            self.buttons[text.split()[0].lower()] = btn
 
+        # Сохраняем ссылки на кнопки в атрибуты
+        self.add_btn = self.buttons['добавить']
+        self.add_multiple_btn = self.buttons['создать']
+        self.start_btn = self.buttons['начать']
+        self.stop_btn = self.buttons['завершить']
+
+        # Отключаем кнопку остановки по умолчанию
         self.stop_btn.config(state=tk.DISABLED)
 
-        # Панель скорости
-        speed_frame = ttk.Frame(self.control_frame)
+        # Панель скорости симуляции
+        speed_frame = ttk.Frame(control_frame)
         speed_frame.pack(fill=tk.X, pady=(10, 0))
 
-        ttk.Label(speed_frame, text="Скорость:").pack(side=tk.LEFT)
+        ttk.Label(
+            speed_frame,
+            text="Скорость времени:",
+            font=("Georgia", 10, "italic")
+        ).pack(side=tk.LEFT)
 
         self.speed_var = tk.DoubleVar(value=1.0)
         self.speed_scale = ttk.Scale(
@@ -1066,81 +1217,201 @@ class GameGUI:
         )
         self.speed_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
 
-        self.speed_label = ttk.Label(speed_frame, text="1.0x", width=5)
+        self.speed_label = ttk.Label(
+            speed_frame,
+            text="1.0x",
+            width=5,
+            font=("Georgia", 10, "bold")
+        )
         self.speed_label.pack(side=tk.LEFT)
 
-    def setup_log_panel(self):
+    def create_log_panel(self):
         """Панель журнала событий"""
         log_frame = ttk.LabelFrame(
             self.content_frame,
-            text=" Журнал событий ",
+            text=" Хроники приключений ",
             padding=(10, 10)
         )
         log_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        self.log_text = scrolledtext.ScrolledText(
+        # Создаем текстовое поле с тегами для цветов
+        self.log_text = tk.Text(
             log_frame,
             wrap=tk.WORD,
             width=60,
             height=25,
-            font=('Consolas', 10),
+            font=('Courier New', 10),
             bg='#2e3440',
             fg='#d8dee9',
             insertbackground='white',
             selectbackground='#5e81ac',
             padx=10,
             pady=10,
-            relief='flat'
+            relief='sunken',
+            bd=3
         )
-        self.log_text.pack(fill=tk.BOTH, expand=True)
 
-    def setup_stats_panel(self):
-        """Панель статистики"""
+        # Настраиваем полосу прокрутки
+        scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text.config(yscrollcommand=scrollbar.set)
+
+        # Добавляем теги для цветного текста
+        for tag_name, color in self.log_colors.items():
+            self.log_text.tag_config(tag_name, foreground=color)
+
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+        self.log_text.config(state=tk.DISABLED)
+
+    def create_stats_panel(self):
+        """Панель статистики и информации"""
         stats_frame = ttk.LabelFrame(
             self.content_frame,
-            text=" Статистика ",
-            padding=(10, 10)
+            text=" Сведения о героях ",
+            padding=(10, 10),
+            width=300
         )
         stats_frame.pack(side=tk.LEFT, fill=tk.BOTH)
 
-        self.stats_text = tk.Text(
+        # Холст для фонового изображения
+        self.stats_canvas = tk.Canvas(
             stats_frame,
-            wrap=tk.WORD,
-            width=35,
-            height=25,
-            font=('Consolas', 10),
             bg='#2e3440',
-            fg='#d8dee9',
-            insertbackground='white',
-            selectbackground='#5e81ac',
-            padx=10,
-            pady=10,
-            relief='flat'
+            highlightthickness=0
         )
-        self.stats_text.pack(fill=tk.BOTH, expand=True)
+        self.stats_canvas.pack(fill=tk.BOTH, expand=True)
 
-        scrollbar = ttk.Scrollbar(
-            stats_frame,
-            command=self.stats_text.yview
-        )
+        # Добавляем полосу прокрутки
+        scrollbar = ttk.Scrollbar(stats_frame, command=self.stats_canvas.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.stats_text.config(yscrollcommand=scrollbar.set)
+        self.stats_canvas.config(yscrollcommand=scrollbar.set)
 
-    def setup_menu(self):
-        """Главное меню приложения"""
-        menubar = tk.Menu(self.root)
+        # Фрейм для содержимого внутри холста
+        self.stats_inner_frame = ttk.Frame(self.stats_canvas)
+        self.stats_canvas.create_window((0, 0), window=self.stats_inner_frame, anchor="nw")
 
-        # Меню Файл
-        file_menu = tk.Menu(menubar)
-        file_menu.add_command(label="Новая симуляция")
-        file_menu.add_command(label="Сохранить лог...")
-        file_menu.add_separator()
-        file_menu.add_command(label="Выход", command=self.root.quit)
-        menubar.add_cascade(label="Файл", menu=file_menu)
+        # Привязка для прокрутки
+        self.stats_inner_frame.bind(
+            "<Configure>",
+            lambda e: self.stats_canvas.configure(
+                scrollregion=self.stats_canvas.bbox("all")
+            )
+        )
 
-        # Меню Помощь
-        help_menu = tk.Menu(menubar)
-        help_menu.add_command(label="О программе")
+        # Заголовок статистики
+        ttk.Label(
+            self.stats_inner_frame,
+            text="Статистика мира",
+            font=("Papyrus", 14, "bold"),
+            foreground="#88c0d0"
+        ).pack(pady=(0, 10))
+
+        # Метки для отображения статистики
+        self.turn_label = ttk.Label(
+            self.stats_inner_frame,
+            text="Ход: 0",
+            font=("Georgia", 10)
+        )
+        self.turn_label.pack(anchor="w")
+
+        self.locations_label = ttk.Label(
+            self.stats_inner_frame,
+            text="Локации: 0",
+            font=("Georgia", 10)
+        )
+        self.locations_label.pack(anchor="w")
+
+        self.monsters_label = ttk.Label(
+            self.stats_inner_frame,
+            text="Монстры: 0",
+            font=("Georgia", 10)
+        )
+        self.monsters_label.pack(anchor="w")
+
+        # Разделитель
+        ttk.Separator(self.stats_inner_frame).pack(fill=tk.X, pady=10)
+
+        # Заголовок списка персонажей
+        self.heroes_label = ttk.Label(
+            self.stats_inner_frame,
+            text="Герои (0)",
+            font=("Papyrus", 12, "bold"),
+            foreground="#a3be8c"
+        )
+        self.heroes_label.pack()
+
+        # Фрейм для списка персонажей
+        self.heroes_frame = ttk.Frame(self.stats_inner_frame)
+        self.heroes_frame.pack(fill=tk.X)
+
+        # Разделитель
+        ttk.Separator(self.stats_inner_frame).pack(fill=tk.X, pady=10)
+
+        # Заголовок списка погибших
+        self.dead_label = ttk.Label(
+            self.stats_inner_frame,
+            text="Погибшие (0)",
+            font=("Papyrus", 12, "bold"),
+            foreground="#bf616a"
+        )
+        self.dead_label.pack()
+
+        # Фрейм для списка погибших
+        self.dead_heroes_frame = ttk.Frame(self.stats_inner_frame)
+        self.dead_heroes_frame.pack(fill=tk.X)
+
+    def create_menu(self):
+        """Создание меню в стиле RPG"""
+        menubar = tk.Menu(self.root, bg="#3b4252", fg="#e5e9f0", activebackground="#4c566a")
+
+        # Меню "Герои"
+        hero_menu = tk.Menu(menubar, tearoff=0, bg="#3b4252", fg="#e5e9f0")
+        hero_menu.add_command(
+            label="Создать героя",
+            command=self.add_character,
+            accelerator="Ctrl+N"
+        )
+        hero_menu.add_command(
+            label="Создать отряд",
+            command=self.add_multiple_characters,
+            accelerator="Ctrl+G"
+        )
+        hero_menu.add_separator()
+        hero_menu.add_command(label="Выйти", command=self.on_close, accelerator="Ctrl+Q")
+        menubar.add_cascade(label="Герои", menu=hero_menu)
+
+        # Меню "Мир"
+        world_menu = tk.Menu(menubar, tearoff=0)
+        world_menu.add_command(
+            label="Начать приключение",
+            command=self.start_simulation,
+            accelerator="F5"
+        )
+        world_menu.add_command(
+            label="Остановить время",
+            command=self.stop_simulation,
+            accelerator="F6"
+        )
+        world_menu.add_separator()
+        world_menu.add_command(
+            label="Очистить лог",
+            command=self.clear_log,
+            accelerator="Ctrl+L"
+        )
+        menubar.add_cascade(label="Мир", menu=world_menu)
+
+        # Меню "Помощь"
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(
+            label="Справка",
+            command=self.show_help,
+            accelerator="F1"
+        )
+        help_menu.add_separator()
+        help_menu.add_command(
+            label="О программе",
+            command=self.show_about
+        )
         menubar.add_cascade(label="Помощь", menu=help_menu)
 
         self.root.config(menu=menubar)
@@ -1150,8 +1421,13 @@ class GameGUI:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Горячие клавиши
-        self.root.bind('<Control-q>', lambda e: self.root.quit())
+        self.root.bind('<Control-q>', lambda e: self.on_close())
+        self.root.bind('<Control-n>', lambda e: self.add_character())
+        self.root.bind('<Control-g>', lambda e: self.add_multiple_characters())
         self.root.bind('<F1>', lambda e: self.show_help())
+        self.root.bind('<F5>', lambda e: self.start_simulation())
+        self.root.bind('<F6>', lambda e: self.stop_simulation())
+        self.root.bind('<Control-l>', lambda e: self.clear_log())
 
     def center_window(self):
         """Центрирование окна на экране"""
@@ -1168,12 +1444,19 @@ class GameGUI:
         self.game_world.simulation_speed = speed
         self.speed_label.config(text=f"{speed}x")
 
+    def clear_log(self):
+        """Очистка лога событий"""
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete(1.0, tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        self.game_world.event_log = []
+
     def on_close(self):
         """Обработчик закрытия окна"""
         self.stop_simulation()
         if messagebox.askokcancel(
-                "Выход",
-                "Вы уверены, что хотите выйти?",
+                "Завершение приключения",
+                "Вы уверены, что хотите покинуть этот мир?",
                 parent=self.root
         ):
             self.root.destroy()
@@ -1181,160 +1464,378 @@ class GameGUI:
     def show_help(self):
         """Показать окно помощи"""
         help_window = tk.Toplevel(self.root)
-        help_window.title("Справка")
-        help_window.geometry("500x400")
+        help_window.title("Мудрость старца")
+        help_window.geometry("600x450")
+        help_window.resizable(False, False)
 
-        text = tk.Text(
+        # Стилизованное окно помощи
+        help_text = tk.Text(
             help_window,
             wrap=tk.WORD,
-            padx=10,
-            pady=10,
-            bg='#3b4252',
-            fg='#e5e9f0',
-            font=('Segoe UI', 10)
+            bg='#2e3440',
+            fg='#d8dee9',
+            font=('Georgia', 11),
+            padx=15,
+            pady=15,
+            relief='flat'
         )
-        text.pack(fill=tk.BOTH, expand=True)
+        help_text.pack(fill=tk.BOTH, expand=True)
 
-        help_text = """RPG World Simulator - помощь
+        help_content = """
+        RPG World Simulator - Мудрость старца
 
-1. Добавьте персонажей с помощью кнопки "Добавить персонажа"
-2. Настройте скорость симуляции
-3. Запустите симуляцию кнопкой "Старт"
-4. Наблюдайте за событиями в журнале
+        Добро пожаловать в мир приключений! Здесь вы можете:
 
-Горячие клавиши:
-Ctrl+Q - выход
-F1 - эта справка"""
+        1. Создать героев разных классов
+        2. Отправить их в путешествие по миру
+        3. Наблюдать за их приключениями
 
-        text.insert(tk.END, help_text)
-        text.config(state=tk.DISABLED)
+        Управление:
 
+        • Создать героя - добавить одного персонажа
+        • Создать отряд - добавить группу персонажей
+        • Начать приключение - запустить симуляцию
+        • Остановить время - приостановить симуляцию
+
+        Горячие клавиши:
+        Ctrl+N - Создать героя
+        Ctrl+G - Создать отряд
+        F5 - Начать приключение
+        F6 - Остановить время
+        Ctrl+Q - Выйти из программы
+        F1 - Эта справка
+
+        Пусть удача сопутствует вашим героям!
+        """
+
+        help_text.insert(tk.END, help_content)
+        help_text.config(state=tk.DISABLED)
+
+        # Кнопка закрытия
         ttk.Button(
             help_window,
-            text="Закрыть",
-            command=help_window.destroy
+            text="Понятно",
+            command=help_window.destroy,
+            style='TButton'
         ).pack(pady=10)
 
+    def show_about(self):
+        """Показать информацию о программе"""
+        about_window = tk.Toplevel(self.root)
+        about_window.title("О программе")
+        about_window.geometry("400x300")
+        about_window.resizable(False, False)
 
+        # Стилизованное окно "О программе"
+        about_text = tk.Text(
+            about_window,
+            wrap=tk.WORD,
+            bg='#2e3440',
+            fg='#d8dee9',
+            font=('Georgia', 11),
+            padx=15,
+            pady=15,
+            relief='flat'
+        )
+        about_text.pack(fill=tk.BOTH, expand=True)
 
-        self.classes = {
-            "Маг": ["Архимаг", "Некромант"],
-            "Воин": ["Берсерк", "Паладин"],
-            "Разбойник": ["Ассасин", "Теневой плясун"],
-            "Жрец": ["Инквизитор", "Друид"],
-            "Лучник": ["Снайпер", "Рейнджер"],
-            "Алхимик": ["Бомбардир", "Трансмутатор"]
-        }
+        about_content = """
+        RPG World Simulator
 
-        self.create_widgets()
-        self.update_ui()
+        Версия: 1.0
+        Автор: Таинственный маг
 
-    def create_widgets(self):
-        # Основные фреймы
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        Эта программа создает мир, населенный героями 
+        и монстрами, и позволяет наблюдать за их 
+        приключениями.
 
-        # Панель управления
-        control_frame = ttk.LabelFrame(main_frame, text="Управление")
-        control_frame.pack(fill=tk.X, padx=5, pady=5)
+        Используемые технологии:
+        • Python 3
+        • Tkinter
+        • PIL (для изображений)
 
-        # Кнопки управления
-        button_frame = ttk.Frame(control_frame)
-        button_frame.pack(fill=tk.X)
+        © 2023 Таинственное королевство
+        """
 
-        self.add_btn = ttk.Button(button_frame, text="Добавить персонажа", command=self.add_character)
-        self.add_btn.pack(side=tk.LEFT, padx=2)
+        about_text.insert(tk.END, about_content)
+        about_text.config(state=tk.DISABLED)
 
-        self.add_multiple_btn = ttk.Button(button_frame, text="Создать группу", command=self.add_multiple_characters)
-        self.add_multiple_btn.pack(side=tk.LEFT, padx=2)
-
-        self.start_btn = ttk.Button(button_frame, text="Старт", command=self.start_simulation)
-        self.start_btn.pack(side=tk.LEFT, padx=2)
-
-        self.stop_btn = ttk.Button(button_frame, text="Стоп", command=self.stop_simulation)
-        self.stop_btn.pack(side=tk.LEFT, padx=2)
-
-        # Настройки скорости
-        speed_frame = ttk.Frame(control_frame)
-        speed_frame.pack(fill=tk.X, pady=5)
-
-        ttk.Label(speed_frame, text="Скорость:").pack(side=tk.LEFT)
-        self.speed_var = tk.DoubleVar(value=1.0)
-        self.speed_scale = ttk.Scale(speed_frame, from_=0.1, to=5.0, variable=self.speed_var,
-                                     command=lambda e: self.update_simulation_speed())
-        self.speed_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.speed_label = ttk.Label(speed_frame, text="1.0x")
-        self.speed_label.pack(side=tk.LEFT)
-
-        # Лог событий и статистика
-        info_frame = ttk.Frame(main_frame)
-        info_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Лог событий
-        log_frame = ttk.LabelFrame(info_frame, text="Лог событий")
-        log_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        self.log_text = scrolledtext.ScrolledText(log_frame, width=60, height=25)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-
-        # Статистика
-        stats_frame = ttk.LabelFrame(info_frame, text="Статистика", width=300)
-        stats_frame.pack(side=tk.LEFT, fill=tk.BOTH, padx=5, pady=5)
-
-        self.stats_text = tk.Text(stats_frame, width=40, height=25)
-        self.stats_text.pack(fill=tk.BOTH, expand=True)
-
-    def update_simulation_speed(self):
-        speed = self.speed_var.get()
-        self.game_world.simulation_speed = speed
-        self.speed_label.config(text=f"{speed:.1f}x")
+        # Кнопка закрытия
+        ttk.Button(
+            about_window,
+            text="Закрыть",
+            command=about_window.destroy,
+            style='TButton'
+        ).pack(pady=10)
 
     def add_character(self):
+        """Диалог добавления нового персонажа"""
         dialog = tk.Toplevel(self.root)
-        dialog.title("Создание персонажа")
+        dialog.title("Создание героя")
+        dialog.geometry("400x300")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
 
-        # Поля ввода
-        ttk.Label(dialog, text="Имя:").grid(row=0, column=0, padx=5, pady=5)
-        name_entry = ttk.Entry(dialog)
-        name_entry.grid(row=0, column=1, padx=5, pady=5)
+        # Фоновый цвет
+        dialog.configure(bg='#3b4252')
 
-        ttk.Label(dialog, text="Класс:").grid(row=1, column=0, padx=5, pady=5)
+        # Заголовок
+        ttk.Label(
+            dialog,
+            text="Создание нового героя",
+            font=("Papyrus", 14, "bold"),
+            foreground="#88c0d0",
+            background="#3b4252"
+        ).pack(pady=10)
+
+        # Фрейм для формы
+        form_frame = ttk.Frame(dialog)
+        form_frame.pack(pady=10, padx=20, fill=tk.X)
+
+        # Поле имени
+        ttk.Label(
+            form_frame,
+            text="Имя героя:",
+            font=("Georgia", 10),
+            background="#3b4252"
+        ).grid(row=0, column=0, sticky="w", pady=5)
+
+        name_entry = ttk.Entry(form_frame, font=("Georgia", 10))
+        name_entry.grid(row=0, column=1, sticky="ew", pady=5)
+
+        # Выбор класса
+        ttk.Label(
+            form_frame,
+            text="Класс:",
+            font=("Georgia", 10),
+            background="#3b4252"
+        ).grid(row=1, column=0, sticky="w", pady=5)
+
         class_var = tk.StringVar()
-        class_combo = ttk.Combobox(dialog, textvariable=class_var, values=list(self.classes.keys()))
-        class_combo.grid(row=1, column=1, padx=5, pady=5)
+        class_combo = ttk.Combobox(
+            form_frame,
+            textvariable=class_var,
+            values=list(self.classes.keys()),
+            font=("Georgia", 10),
+            state="readonly"
+        )
+        class_combo.grid(row=1, column=1, sticky="ew", pady=5)
         class_combo.current(0)
 
-        ttk.Label(dialog, text="Подкласс:").grid(row=2, column=0, padx=5, pady=5)
-        subclass_var = tk.StringVar()
-        subclass_combo = ttk.Combobox(dialog, textvariable=subclass_var)
-        subclass_combo.grid(row=2, column=1, padx=5, pady=5)
+        # Выбор подкласса
+        ttk.Label(
+            form_frame,
+            text="Подкласс:",
+            font=("Georgia", 10),
+            background="#3b4252"
+        ).grid(row=2, column=0, sticky="w", pady=5)
 
-        def update_subclasses(event):
-            subclasses = self.classes.get(class_var.get(), [])
-            subclass_combo["values"] = subclasses
-            if subclasses:
-                subclass_combo.current(0)
+        subclass_var = tk.StringVar()
+        subclass_combo = ttk.Combobox(
+            form_frame,
+            textvariable=subclass_var,
+            font=("Georgia", 10),
+            state="readonly"
+        )
+        subclass_combo.grid(row=2, column=1, sticky="ew", pady=5)
+
+        # Обновление подклассов при выборе класса
+        def update_subclasses(event=None):
+            selected_class = class_var.get()
+            if selected_class in self.classes:
+                subclasses = self.classes[selected_class]
+                subclass_combo["values"] = subclasses
+                if subclasses:
+                    subclass_combo.current(0)
 
         class_combo.bind("<<ComboboxSelected>>", update_subclasses)
-        update_subclasses(None)
+        update_subclasses()  # Инициализация
 
-        def create():
+        # Кнопки
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+
+        def create_hero():
             name = name_entry.get()
-            class_name = class_var.get()
+            char_class = class_var.get()
             subclass = subclass_var.get()
 
             if not name:
-                messagebox.showerror("Ошибка", "Введите имя персонажа")
+                messagebox.showerror("Ошибка", "Герой должен иметь имя!", parent=dialog)
                 return
 
-            char = self.create_character(class_name, subclass, name)
+            char = self.create_character(char_class, subclass, name)
             self.game_world.add_npc(char)
             self.update_ui()
             dialog.destroy()
 
-        ttk.Button(dialog, text="Создать", command=create).grid(row=3, column=0, columnspan=2, pady=5)
+        ttk.Button(
+            button_frame,
+            text="Создать героя",
+            command=create_hero,
+            style='TButton'
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="Отмена",
+            command=dialog.destroy,
+            style='TButton'
+        ).pack(side=tk.LEFT, padx=5)
+
+    def add_multiple_characters(self):
+        """Диалог добавления нескольких персонажей"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Создание отряда")
+        dialog.geometry("400x350")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        # Фоновый цвет
+        dialog.configure(bg='#3b4252')
+
+        # Заголовок
+        ttk.Label(
+            dialog,
+            text="Создание отряда",
+            font=("Papyrus", 14, "bold"),
+            foreground="#88c0d0",
+            background="#3b4252"
+        ).pack(pady=10)
+
+        # Фрейм для формы
+        form_frame = ttk.Frame(dialog)
+        form_frame.pack(pady=10, padx=20, fill=tk.X)
+
+        # Количество персонажей
+        ttk.Label(
+            form_frame,
+            text="Число героев:",
+            font=("Georgia", 10),
+            background="#3b4252"
+        ).grid(row=0, column=0, sticky="w", pady=5)
+
+        count_var = tk.IntVar(value=3)
+        ttk.Spinbox(
+            form_frame,
+            from_=1,
+            to=10,
+            textvariable=count_var,
+            font=("Georgia", 10)
+        ).grid(row=0, column=1, sticky="ew", pady=5)
+
+        # Префикс имен
+        ttk.Label(
+            form_frame,
+            text="Префикс имен:",
+            font=("Georgia", 10),
+            background="#3b4252"
+        ).grid(row=1, column=0, sticky="w", pady=5)
+
+        prefix_var = tk.StringVar(value="Герой")
+        ttk.Entry(
+            form_frame,
+            textvariable=prefix_var,
+            font=("Georgia", 10)
+        ).grid(row=1, column=1, sticky="ew", pady=5)
+
+        # Выбор класса
+        ttk.Label(
+            form_frame,
+            text="Основной класс:",
+            font=("Georgia", 10),
+            background="#3b4252"
+        ).grid(row=2, column=0, sticky="w", pady=5)
+
+        class_var = tk.StringVar()
+        class_combo = ttk.Combobox(
+            form_frame,
+            textvariable=class_var,
+            values=list(self.classes.keys()),
+            font=("Georgia", 10),
+            state="readonly"
+        )
+        class_combo.grid(row=2, column=1, sticky="ew", pady=5)
+        class_combo.current(0)
+
+        # Кнопки
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(pady=10)
+
+        def create_group():
+            count = count_var.get()
+            prefix = prefix_var.get()
+            char_class = class_var.get()
+
+            if not prefix:
+                messagebox.showerror("Ошибка", "Укажите префикс имен!", parent=dialog)
+                return
+
+            npc_list = []
+            for i in range(1, count + 1):
+                name = f"{prefix} {i}"
+                subclass = random.choice(self.classes[char_class])
+                npc_list.append(self.create_character(char_class, subclass, name))
+
+            self.game_world.add_multiple_npcs(npc_list)
+            self.update_ui()
+            dialog.destroy()
+
+        ttk.Button(
+            button_frame,
+            text="Создать отряд",
+            command=create_group,
+            style='TButton'
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(
+            button_frame,
+            text="Отмена",
+            command=dialog.destroy,
+            style='TButton'
+        ).pack(side=tk.LEFT, padx=5)
+
+    def create_character_display(self, parent, npc):
+        """Создание отображения персонажа с иконкой"""
+        frame = ttk.Frame(parent)
+        frame.pack(fill=tk.X, pady=5)
+
+        # Иконка класса
+        class_name = npc.__class__.__bases__[0].__name__
+        if class_name not in self.class_images:
+            class_name = "Маг"  # Запасной вариант
+
+        icon_label = ttk.Label(frame, image=self.class_images.get(class_name, None))
+        icon_label.pack(side=tk.LEFT, padx=5)
+
+        # Информация о персонаже
+        info_frame = ttk.Frame(frame)
+        info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        ttk.Label(
+            info_frame,
+            text=f"{npc.name} ({npc.__class__.__name__})",
+            font=("Georgia", 10, "bold")
+        ).pack(anchor="w")
+
+        ttk.Label(
+            info_frame,
+            text=f"Ур. {npc.level}, HP: {npc.health}/{npc.max_health}",
+            font=("Georgia", 9)
+        ).pack(anchor="w")
+
+        ttk.Label(
+            info_frame,
+            text=f"Состояние: {npc.state}",
+            font=("Georgia", 9)
+        ).pack(anchor="w")
+
+        return frame
 
     def create_character(self, class_name, subclass, name):
+        """Создание экземпляра персонажа"""
         class_map = {
             "Маг": {
                 "Архимаг": Archmage,
@@ -1363,111 +1864,166 @@ F1 - эта справка"""
         }
         return class_map[class_name][subclass](name)
 
-    def add_multiple_characters(self):
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Создание группы персонажей")
-
-        # Количество персонажей
-        ttk.Label(dialog, text="Количество персонажей:").grid(row=0, column=0, padx=5, pady=5)
-        count_var = tk.IntVar(value=3)
-        ttk.Spinbox(dialog, from_=1, to=10, textvariable=count_var).grid(row=0, column=1, padx=5, pady=5)
-
-        # Префикс имен
-        ttk.Label(dialog, text="Префикс имен:").grid(row=1, column=0, padx=5, pady=5)
-        prefix_var = tk.StringVar(value="Персонаж")
-        ttk.Entry(dialog, textvariable=prefix_var).grid(row=1, column=1, padx=5, pady=5)
-
-        # Выбор класса
-        ttk.Label(dialog, text="Основной класс:").grid(row=2, column=0, padx=5, pady=5)
-        class_var = tk.StringVar()
-        class_combo = ttk.Combobox(dialog, textvariable=class_var, values=list(self.classes.keys()))
-        class_combo.grid(row=2, column=1, padx=5, pady=5)
-        class_combo.current(0)
-
-        def create():
-            count = count_var.get()
-            prefix = prefix_var.get()
-            class_name = class_var.get()
-
-            if not prefix:
-                messagebox.showerror("Ошибка", "Введите префикс имен")
-                return
-
-            npc_list = []
-            for i in range(1, count + 1):
-                name = f"{prefix} {i}"
-                subclass = random.choice(self.classes[class_name])
-                npc_list.append(self.create_character(class_name, subclass, name))
-
-            self.game_world.add_multiple_npcs(npc_list)
-            self.update_ui()
-            dialog.destroy()
-
-        ttk.Button(dialog, text="Создать группу", command=create).grid(row=3, column=0, columnspan=2, pady=5)
-
     def start_simulation(self):
+        """Запуск симуляции"""
         if not self.game_world.npcs:
-            messagebox.showwarning("Предупреждение", "Добавьте хотя бы одного персонажа")
+            messagebox.showwarning(
+                "Нет героев",
+                "Добавьте хотя бы одного героя перед началом приключения!",
+                parent=self.root
+            )
             return
 
         if not self.game_world.is_running:
             self.game_world.start_simulation()
-            self.simulation_thread = threading.Thread(target=self.run_simulation, daemon=True)
+            self.simulation_thread = threading.Thread(
+                target=self.run_simulation,
+                daemon=True
+            )
             self.simulation_thread.start()
             self.update_ui()
 
     def stop_simulation(self):
+        """Остановка симуляции"""
         if self.game_world.is_running:
             self.game_world.stop_simulation()
             self.update_ui()
 
     def run_simulation(self):
+        """Основной цикл симуляции"""
         while self.game_world.is_running:
             self.game_world.simulate_turn()
             self.root.after(100, self.update_ui)
             time.sleep(1.0 / self.game_world.simulation_speed)
 
+    def determine_log_color(self, message):
+        """Определение цвета сообщения в логе"""
+        message_lower = message.lower()
+
+        if any(word in message_lower for word in ["повержен", "умирает", "погиб"]):
+            return "death"
+        elif any(word in message_lower for word in ["атакует", "урон", "бьёт", "поражает"]):
+            return "combat"
+        elif any(word in message_lower for word in ["исцеляет", "восстанавливает", "регенерация"]):
+            return "heal"
+        elif any(word in message_lower for word in ["находит", "золота", "артефакт"]):
+            return "loot"
+        elif any(word in message_lower for word in ["уровень", "опыта", "достигает"]):
+            return "level"
+        elif any(word in message_lower for word in ["заклинание", "кастует", "магический"]):
+            return "spell"
+        elif any(word in message_lower for word in ["эффект", "отравлен", "заморожен", "горит"]):
+            return "status"
+        elif any(word in message_lower for word in ["монстр", "дракон", "гоблин", "тролль"]):
+            return "monster"
+        elif message.startswith("==="):
+            return "system"
+        else:
+            return "default"
+
     def update_ui(self):
+        """Обновление интерфейса"""
         # Обновление лога событий
         self.log_text.config(state=tk.NORMAL)
-        self.log_text.delete(1.0, tk.END)
-        for event in self.game_world.event_log[-100:]:  # Показываем последние 100 событий
-            self.log_text.insert(tk.END, event + "\n")
-        self.log_text.see(tk.END)
+
+        # Добавляем только новые события
+        current_log_length = len(self.game_world.event_log)
+        prev_log_length = getattr(self, 'prev_log_length', 0)
+
+        if current_log_length > prev_log_length:
+            new_events = self.game_world.event_log[prev_log_length:]
+            for event in new_events:
+                color_tag = self.determine_log_color(event)
+                self.log_text.insert(tk.END, event + "\n", color_tag)
+
+            self.log_text.see(tk.END)
+            self.prev_log_length = current_log_length
+
         self.log_text.config(state=tk.DISABLED)
 
         # Обновление статистики
         stats = self.game_world.get_stats()
-        self.stats_text.config(state=tk.NORMAL)
-        self.stats_text.delete(1.0, tk.END)
 
-        self.stats_text.insert(tk.END, f"=== ОБЩАЯ СТАТИСТИКА ===\n")
-        self.stats_text.insert(tk.END, f"Ход: {stats['turn_count']}\n")
-        self.stats_text.insert(tk.END, f"Локации: {stats['locations']}\n")
-        self.stats_text.insert(tk.END, f"Монстров: {stats['alive_monsters']}\n\n")
+        # Общая статистика
+        self.turn_label.config(text=f"Ход: {stats['turn_count']}")
+        self.locations_label.config(text=f"Локации: {stats['locations']}")
+        self.monsters_label.config(text=f"Монстры: {stats['alive_monsters']}")
 
-        self.stats_text.insert(tk.END, f'=== ПЕРСОНАЖИ ({len(stats["alive_npcs"])} ===\n')
+        # Очистка предыдущих героев
+        for widget in self.heroes_frame.winfo_children():
+            widget.destroy()
+
+            # Добавление текущих героев с иконками
+        self.heroes_label.config(text=f"Герои ({len(stats['alive_npcs'])})")
+
         for npc in stats['alive_npcs']:
-            self.stats_text.insert(tk.END,
-                                   f"{npc.name} ({npc.__class__.__name__})\n"
-                                   f"Ур. {npc.level}, HP: {npc.health}/{npc.max_health}\n"
-                                   f"Состояние: {npc.state}\n\n")
+            self.create_character_display(self.heroes_frame, npc)
 
-        self.stats_text.insert(tk.END, f"\n=== ПОГИБШИЕ ({len(stats['dead_npcs'])} ===\n")
-        for npc in stats['dead_npcs'][:5]:  # Показываем только последних 5
-            self.stats_text.insert(tk.END, f"{npc.name} (ур. {npc.level})\n")
+        # Добавление текущих героев
+        self.heroes_label.config(text=f"Герои ({len(stats['alive_npcs'])})")
+
+        for npc in stats['alive_npcs']:
+            char_frame = ttk.Frame(self.heroes_frame)
+            char_frame.pack(fill=tk.X, pady=5)
+
+            # Иконка класса
+            class_icon = ttk.Label(char_frame, text="⚔", font=("Arial", 14))
+            class_icon.pack(side=tk.LEFT, padx=5)
+
+            # Информация о персонаже
+            info_frame = ttk.Frame(char_frame)
+            info_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+            ttk.Label(
+                info_frame,
+                text=f"{npc.name} ({npc.__class__.__name__})",
+                font=("Georgia", 10, "bold")
+            ).pack(anchor="w")
+
+            ttk.Label(
+                info_frame,
+                text=f"Ур. {npc.level}, HP: {npc.health}/{npc.max_health}",
+                font=("Georgia", 9)
+            ).pack(anchor="w")
+
+            ttk.Label(
+                info_frame,
+                text=f"Состояние: {npc.state}",
+                font=("Georgia", 9)
+            ).pack(anchor="w")
+
+            # Разделитель
+            ttk.Separator(char_frame).pack(fill=tk.X, pady=2)
+
+        # Очистка предыдущих погибших
+        for widget in self.dead_heroes_frame.winfo_children():
+            widget.destroy()
+
+        # Добавление погибших героев
+        self.dead_label.config(text=f"Погибшие ({len(stats['dead_npcs'])})")
+
+        for npc in stats['dead_npcs'][:5]:  # Показываем только первых 5
+            ttk.Label(
+                self.dead_heroes_frame,
+                text=f"{npc.name} (ур. {npc.level})",
+                font=("Georgia", 9),
+                foreground="#bf616a"
+            ).pack(anchor="w")
 
         if len(stats['dead_npcs']) > 5:
-            self.stats_text.insert(tk.END, f"... и еще {len(stats['dead_npcs']) - 5}\n")
-
-        self.stats_text.config(state=tk.DISABLED)
+            ttk.Label(
+                self.dead_heroes_frame,
+                text=f"... и еще {len(stats['dead_npcs']) - 5}",
+                font=("Georgia", 8),
+                foreground="#bf616a"
+            ).pack(anchor="w")
 
         # Обновление состояния кнопок
         running = self.game_world.is_running
-        self.start_btn.state(["disabled" if running else "!disabled"])
-        self.stop_btn.state(["disabled" if not running else "!disabled"])
-        self.add_btn.state(["disabled" if running else "!disabled"])
-        self.add_multiple_btn.state(["disabled" if running else "!disabled"])
+        self.start_btn.config(state=tk.DISABLED if running else tk.NORMAL)
+        self.stop_btn.config(state=tk.NORMAL if running else tk.DISABLED)
+        self.add_btn.config(state=tk.DISABLED if running else tk.NORMAL)
+        self.add_multiple_btn.config(state=tk.DISABLED if running else tk.NORMAL)
 
 
 if __name__ == "__main__":
